@@ -3,7 +3,9 @@ docker compose up -d --build
 
 ### Alembic init
 docker compose exec auth-service python -m alembic init alembic
+
 docker compose exec auth-service python -m alembic revision --autogenerate -m "add profile fields sessions and password reset"
+
 docker compose exec auth-service python -m alembic upgrade head
 
 ### Check Alembic in Container
