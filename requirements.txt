@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+SQLAlchemy>=2.0
+PyMySQL
+pydantic-settings
+python-dotenv
+alembic
+passlib[bcrypt]==1.7.4
+python-jose[cryptography]
+email-validator
+bcrypt==4.1.3
+pytest
+httpx
