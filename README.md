@@ -1,22 +1,3 @@
-auth-service/
-├─ app/
-│  ├─ main.py
-│  ├─ core/
-│  ├─ api/
-│  ├─ db/
-│  ├─ models/
-│  ├─ schemas/
-│  ├─ crud/
-│  └─ services/
-├─ alembic/
-├─ docker/
-├─ tests/
-├─ docker-compose.yml
-├─ requirements.txt
-├─ .env.example
-└─ README.md
-
-
 ### Build Docker
 docker compose up -d --build
 
