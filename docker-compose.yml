@@ -1,6 +1,7 @@
 services:
   mysql:
     image: mysql:8.0
+    container_name: auth-mysql
     environment:
       MYSQL_DATABASE: auth_db
       MYSQL_USER: auth_user
@@ -10,21 +11,54 @@ services:
       - "3307:3306"
     volumes:
       - mysql_data:/var/lib/mysql
-    command: ["mysqld", "--default-authentication-plugin=mysql_native_password"]
+    command:
+      - mysqld
+      - --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 20s
 
   auth-service:
     build:
       context: .
       dockerfile: docker/Dockerfile
+    container_name: auth-service
     env_file:
       - .env
+    environment:
+      PYTHONPATH: /app
+    working_dir: /app
     ports:
       - "8001:8000"
     depends_on:
-      - mysql
-    environment:
-    - PYTHONPATH=/app
-    working_dir: /app
+      mysql:
+        condition: service_healthy
+    entrypoint:
+      - sh
+      - -lc
+    command:
+      - |
+        python - <<'PY'
+        import socket, time
+        host, port = 'mysql', 3306
+        for i in range(60):
+            try:
+                s = socket.create_connection((host, port), 2)
+                s.close()
+                print('mysql ready')
+                break
+            except Exception:
+                time.sleep(1)
+        else:
+            raise SystemExit('mysql not ready')
+        PY
+        python -m alembic upgrade head
+        python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 volumes:
   mysql_data:
