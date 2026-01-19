@@ -23,7 +23,6 @@ class Settings(BaseSettings):
     )
 
     DATABASE_URL: str
-    ENV: str = "dev"
 
     @property
     def JWT_SECRET_KEY(self) -> str:
