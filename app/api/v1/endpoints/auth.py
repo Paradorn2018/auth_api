@@ -91,7 +91,12 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
     ),
 )
 def refresh(payload: RefreshRequest, request: Request, db: Session = Depends(get_db)):
-    data = decode_token(payload.refresh_token)
+    try:
+        data = decode_token(payload.refresh_token)
+    except Exception:
+        # token format ไม่ถูก, signature ไม่ผ่าน, หมดอายุ ฯลฯ
+        raise HTTPException(status_code=401, detail="Invalid token")
+
     if data.get("type") != "refresh":
         raise HTTPException(status_code=401, detail="Invalid token type")
 
@@ -100,7 +105,6 @@ def refresh(payload: RefreshRequest, request: Request, db: Session = Depends(get
     if not rt or rt.revoked_at is not None:
         raise HTTPException(status_code=401, detail="Refresh token revoked/unknown")
 
-    # rotate
     revoke(db, rt)
 
     user = get_user(db, rt.user_id)
@@ -115,6 +119,7 @@ def refresh(payload: RefreshRequest, request: Request, db: Session = Depends(get
 
     save_refresh(db, user.id, rt.session_id, _sha256(new_refresh), exp, user_agent=ua, ip=ip)
     return TokenPair(access_token=access, refresh_token=new_refresh)
+
 
 
 @router.post("/logout")

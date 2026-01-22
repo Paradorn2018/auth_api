@@ -16,4 +16,3 @@ docker compose logs --tail=120 auth-service
 
 ### Unit Test from Pytest 
 docker compose exec auth-service bash -lc "PYTHONPATH=/app python -m pytest -q"
-
