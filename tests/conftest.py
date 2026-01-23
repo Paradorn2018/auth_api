@@ -12,6 +12,11 @@ from app.api.deps import get_db
 from app.db.base import Base                         # Base = declarative_base()
 import app.models                                    # ✅ ให้มัน import models ทั้งหมดเพื่อให้ metadata รู้จัก table
 
+import os
+os.environ.setdefault("JWT_SECRET", "test-secret-please-change-32-chars-minimum")
+os.environ.setdefault("ENV", "dev")
+os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
+
 
 @pytest.fixture(scope="session")
 def engine():

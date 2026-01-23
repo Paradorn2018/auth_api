@@ -12,7 +12,9 @@ def health():
     return {"status": "ok", "service": settings.APP_NAME}
 
 
-@app.post("/debug/body")
-async def debug_body(req: Request):
-    raw = await req.body()
-    return {"raw": raw.decode("utf-8", errors="ignore")}
+# ✅ เปิดเฉพาะ dev
+if settings.ENV == "dev":
+    @app.post("/debug/body")
+    async def debug_body(req: Request):
+        raw = await req.body()
+        return {"raw": raw.decode("utf-8", errors="ignore")}

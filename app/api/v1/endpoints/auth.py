@@ -179,7 +179,7 @@ def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db
     create_reset_token(db, user.id, token_hash, expires_at)
 
     # DEV MODE: คืน token ให้ทดสอบ (PROD ควรส่ง email อย่างเดียว)
-    if settings.ENV.lower() == "dev":
+    if settings.ENV == "dev":
         return {"status": "ok", "reset_token": raw_token}
 
     return {"status": "ok"}
