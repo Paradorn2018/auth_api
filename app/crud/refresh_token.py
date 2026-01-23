@@ -33,16 +33,21 @@ def get_by_hash(db: Session, token_hash: str) -> RefreshToken | None:
 
 
 def revoke(db: Session, rt: RefreshToken) -> None:
-    rt.revoked_at = datetime.now(timezone.utc)
-    rt.last_used_at = datetime.now(timezone.utc)
-    db.add(rt)
+    now = datetime.now(timezone.utc)
+    rt.revoked_at = now
+    rt.last_used_at = now
     db.commit()
+
 
 
 def revoke_all_for_user(db: Session, user_id: int) -> int:
     now = datetime.now(timezone.utc)
-    q = db.query(RefreshToken).filter(and_(RefreshToken.user_id == user_id, RefreshToken.revoked_at.is_(None)))
+    q = db.query(RefreshToken).filter(
+        RefreshToken.user_id == user_id,
+        RefreshToken.revoked_at.is_(None),
+    )
     count = q.count()
-    q.update({"revoked_at": now}, synchronize_session=False)
+    q.update({"revoked_at": now, "last_used_at": now}, synchronize_session=False)
     db.commit()
     return count
+

@@ -9,28 +9,17 @@ from app.db.base_class import Base
 class RefreshToken(Base):
     __tablename__ = "refresh_tokens"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    session_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
 
-    user_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey("users.id", ondelete="CASCADE"),
-        index=True,
-        nullable=False,
-    )
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
 
-    # ใช้แยก session/device (เช่น uuid string)
-    session_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
-    # เก็บ hash ของ refresh token (ห้ามเก็บ token จริง)
-    token_hash: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
 
-    created_at = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-
-    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
-
-    # optional telemetry
-    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
     user_agent: Mapped[str | None] = mapped_column(String(255), nullable=True)
     ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
 

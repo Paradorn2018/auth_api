@@ -76,6 +76,7 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
     refresh, exp = create_refresh_token(str(user.id))
 
     save_refresh(db, user.id, session_id, _sha256(refresh), exp, user_agent=ua, ip=ip)
+    db.commit()
     return TokenPair(access_token=access, refresh_token=refresh)
 
 
