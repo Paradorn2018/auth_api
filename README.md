@@ -1,18 +1,8 @@
-### Build Docker
-docker compose up -d --build
+### Build Docker Developer Environment
+docker compose --profile dev --env-file .env.dev up -d --build
 
-### Alembic init
-docker compose exec auth-service python -m alembic init alembic
+### Unit Test from Pytest (dev environment only)
+docker compose --env-file .env.dev exec auth-service bash -lc "PYTHONPATH=/app python -m pytest -q"
 
-docker compose exec auth-service python -m alembic revision --autogenerate -m "add profile fields sessions and password reset"
-
-docker compose exec auth-service python -m alembic upgrade head
-
-### Check Alembic in Container
-docker compose exec auth-service python -m alembic --version
-
-## View Error from Containter
-docker compose logs --tail=120 auth-service
-
-### Unit Test from Pytest 
-docker compose exec auth-service bash -lc "PYTHONPATH=/app python -m pytest -q"
+### Build Docker Production Environment
+docker compose --profile prod --env-file .env.prod up -d --build

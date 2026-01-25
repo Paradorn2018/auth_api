@@ -2,7 +2,7 @@ import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, Cookie
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
@@ -30,6 +30,12 @@ from app.schemas.auth import (
 )
 from app.schemas.token import TokenPair
 from app.schemas.user import UserOut, ProfileUpdateRequest
+from app.core.limiter import limiter
+from app.core.cookies import set_refresh_cookie, clear_refresh_cookie
+from typing import Optional
+from app.core.email import send_reset_email
+
+
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -61,13 +67,18 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     return user
 
 
-@router.post("/login", response_model=TokenPair)
-def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)):
+@router.post("/login")
+@limiter.limit("5/minute")
+def login(
+    payload: LoginRequest,
+    request: Request,
+    response: Response,   # ✅ เพิ่ม
+    db: Session = Depends(get_db)
+):
     user = get_user_by_email(db, payload.email)
     if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    # session/device
     session_id = payload.device_id or secrets.token_hex(16)
     ua = request.headers.get("user-agent")
     ip = request.client.host if request.client else None
@@ -77,31 +88,37 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
 
     save_refresh(db, user.id, session_id, _sha256(refresh), exp, user_agent=ua, ip=ip)
     db.commit()
+
+    # ✅ ใส่ refresh token ลง cookie
+    set_refresh_cookie(response, refresh)
+
+    if settings.ENV == "prod":
+        return TokenPair(access_token=access)   # refresh_token จะเป็น None
     return TokenPair(access_token=access, refresh_token=refresh)
 
 
-@router.post(
-    "/refresh-access-token",
-    response_model=TokenPair,
-    summary="Refresh access token",
-    description=(
-        "Issue a new access token using a valid refresh token. "
-        "This endpoint performs refresh token rotation by revoking the old refresh token "
-        "and generating a new refresh token for the same session. "
-        "It also stores device metadata (User-Agent and IP) for session tracking and security."
-    ),
-)
-def refresh(payload: RefreshRequest, request: Request, db: Session = Depends(get_db)):
+@router.post("/refresh-access-token", response_model=TokenPair)
+def refresh(
+    request: Request,
+    response: Response,
+    payload: Optional[RefreshRequest] = None,
+    refresh_token_cookie: Optional[str] = Cookie(default=None, alias="refresh_token"),
+    db: Session = Depends(get_db),
+):
+    
+    rt_raw = refresh_token_cookie or (payload.refresh_token if payload else None)
+    if not rt_raw:
+        raise HTTPException(status_code=401, detail="Missing refresh token")
+    
     try:
-        data = decode_token(payload.refresh_token)
+        data = decode_token(rt_raw)
     except Exception:
-        # token format ไม่ถูก, signature ไม่ผ่าน, หมดอายุ ฯลฯ
         raise HTTPException(status_code=401, detail="Invalid token")
 
     if data.get("type") != "refresh":
         raise HTTPException(status_code=401, detail="Invalid token type")
 
-    token_hash = _sha256(payload.refresh_token)
+    token_hash = _sha256(rt_raw)
     rt = get_by_hash(db, token_hash)
     if not rt or rt.revoked_at is not None:
         raise HTTPException(status_code=401, detail="Refresh token revoked/unknown")
@@ -119,16 +136,37 @@ def refresh(payload: RefreshRequest, request: Request, db: Session = Depends(get
     ip = request.client.host if request.client else None
 
     save_refresh(db, user.id, rt.session_id, _sha256(new_refresh), exp, user_agent=ua, ip=ip)
+    db.commit()
+
+    # ✅ rotate แล้ว set cookie ใหม่
+    set_refresh_cookie(response, new_refresh)
+
+    if settings.ENV == "prod":
+        return TokenPair(access_token=access)
     return TokenPair(access_token=access, refresh_token=new_refresh)
 
 
 
+
 @router.post("/logout")
-def logout(payload: RefreshRequest, db: Session = Depends(get_db)):
-    token_hash = _sha256(payload.refresh_token)
-    rt = get_by_hash(db, token_hash)
-    if rt and rt.revoked_at is None:
-        revoke(db, rt)
+def logout(
+    request: Request,
+    response: Response,
+    payload: RefreshRequest | None = None,
+    refresh_token_cookie: str | None = Cookie(default=None, alias="refresh_token"),
+    db: Session = Depends(get_db),
+):
+    
+    # ✅ เอาจาก body ก่อน ถ้าไม่มีค่อยจาก cookie
+    rt_raw = refresh_token_cookie or (payload.refresh_token if payload else None)
+    if rt_raw:
+        token_hash = _sha256(rt_raw)
+        rt = get_by_hash(db, token_hash)
+        if rt and rt.revoked_at is None:
+            revoke(db, rt)
+        db.commit()
+
+    clear_refresh_cookie(response)
     return {"status": "ok"}
 
 
@@ -167,7 +205,8 @@ def change_password(payload: ChangePasswordRequest, current_user=Depends(get_cur
 
 
 @router.post("/forgot-password")
-def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db)):
+@limiter.limit("3/minute")
+def forgot_password(request: Request, payload: ForgotPasswordRequest, db: Session = Depends(get_db)):
     user = get_user_by_email(db, payload.email)
     # ไม่บอกว่ามี user หรือไม่ (กัน enumeration)
     if not user:
@@ -183,11 +222,13 @@ def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db
     if settings.ENV == "dev":
         return {"status": "ok", "reset_token": raw_token}
 
+    send_reset_email(user.email, raw_token)
     return {"status": "ok"}
 
 
 @router.post("/reset-password")
-def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db)):
+@limiter.limit("5/minutes")
+def reset_password(request: Request, payload: ResetPasswordRequest, db: Session = Depends(get_db)):
     token_hash = _sha256(payload.token)
     row = get_reset_by_hash(db, token_hash)
     if not row:

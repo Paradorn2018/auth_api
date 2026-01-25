@@ -1,0 +1,44 @@
+0) ตั้งค่า Base URL (แนะนำ)
+$BASE="http://localhost:8002"
+$session=$null
+
+1) Register
+Invoke-RestMethod -Method Post -Uri "http://localhost:8002/api/v1/auth/register" -ContentType "application/json" -Body '{"email":"paradorn.boonpoor@gmail.com","password":"test1234"}'
+
+2) Login (ได้ access_token + refresh_token)
+$login = Invoke-RestMethod -Method Post -Uri "$BASE/api/v1/auth/login" -ContentType "application/json" -Body '{"email":"paradorn.boonpoor@gmail.com","password":"test1234"}' -SessionVariable session
+$session.Cookies.GetCookies($BASE) | Format-Table Name, Domain, Path, Secure, HttpOnly
+
+3) Verify (ต้องใส่ Bearer token)
+Invoke-RestMethod -Method Get -Uri "$BASE/api/v1/auth/verify" -Headers @{Authorization="Bearer $($login.access_token)"}
+
+4) View Profile
+Invoke-RestMethod -Method Get -Uri "$BASE/api/v1/auth/view-profile" -Headers @{Authorization="Bearer $($login.access_token)"}
+
+5) Edit Profile (PATCH)
+Invoke-RestMethod -Method Patch -Uri "$BASE/api/v1/auth/edit-profile" -ContentType "application/json" -Headers @{Authorization="Bearer $($login.access_token)"} -Body '{"full_name":"Paradorn","phone":"0999999999"}'
+
+6) Change Password (POST)
+Invoke-RestMethod -Method Post -Uri "$BASE/api/v1/auth/change-password" -ContentType "application/json" -Headers @{Authorization="Bearer $($login.access_token)"} -Body '{"old_password":"Passw0rd!","new_password":"NewPassw0rd!"}'
+
+7) Refresh Access Token (POST)
+$newTokens = Invoke-RestMethod -Method Post -Uri "$BASE/api/v1/auth/refresh-access-token" -ContentType "application/json" -Body '{}' -WebSession $session
+$newTokens
+
+8) Logout (POST)
+Invoke-RestMethod -Method Post -Uri "$BASE/api/v1/auth/logout" -ContentType "application/json" -Body '{}' -WebSession $session
+$session.Cookies.GetCookies($BASE) | Format-Table Name, Domain, Path, Secure, HttpOnly
+
+9) Logout All (POST) (ต้องใช้ access token)
+Invoke-RestMethod -Method Post -Uri "$BASE/api/v1/auth/logout-all" -Headers @{Authorization="Bearer $($login.access_token)"}
+
+Invoke-RestMethod -Method Post -Uri "$BASE/api/v1/auth/refresh-access-token" -ContentType "application/json" -Body '{}' -WebSession $session
+-- ควรได้ 401 / Missing refresh token หรือ revoked
+
+10) Forgot Password (POST)
+$forgot=Invoke-RestMethod -Method Post -Uri "$BASE/api/v1/auth/forgot-password" -ContentType "application/json" -Body '{"email":"paradorn.boonpoor@gmail.com"}'; $forgot
+
+11) Reset Password (POST)
+$token="PASTE_TOKEN_FROM_EMAIL"
+Invoke-RestMethod -Method Post -Uri "$BASE/api/v1/auth/reset-password" -ContentType "application/json" -Body "{`"token`":`"$token`",`"new_password`":`"ResetPassw0rd!`"}"
+

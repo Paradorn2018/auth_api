@@ -1,4 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field
+from typing import Optional
 
 class RegisterRequest(BaseModel):
     email: EmailStr
@@ -10,7 +11,7 @@ class LoginRequest(BaseModel):
     device_id: str | None = None  # client ส่งมาเองได้ (แนะนำ)
 
 class RefreshRequest(BaseModel):
-    refresh_token: str
+    refresh_token: Optional[str] = None
 
 class ChangePasswordRequest(BaseModel):
     old_password: str

@@ -1,7 +1,27 @@
 services:
+
+    # --- PROD DB (ไม่ publish port ออกนอกเครื่อง) ---
   mysql:
     image: mysql:8.0
-    container_name: auth-mysql
+    profiles: ["prod"]
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    container_name: auth-mysql-prod
+
+  # --- DEV DB (publish port ให้เครื่อง host) ---
+  mysql-dev:
+    image: mysql:8.0
+    profiles: ["dev"]
     environment:
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
@@ -11,52 +31,72 @@ services:
       - "3310:3306"
     volumes:
       - mysql_data:/var/lib/mysql
-    command:
-      - mysqld
-      - --default-authentication-plugin=mysql_native_password
-      - --default-time-zone=+07:00
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 20
+    container_name: auth-mysql-dev
+
+  migrate:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: prod
+    profiles: ["prod"]
+    env_file: [.env.prod]
+    environment:
+      ENV_FILE: .env.prod
+      PYTHONPATH: /app
+    depends_on:
+      mysql:
+        condition: service_healthy
+    command: ["python", "-m", "alembic", "upgrade", "head"]
+    restart: "no"
+    container_name: auth-migrate
 
   auth-service:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    container_name: auth-service
-    env_file:
-      - .env
+      target: dev
+    profiles: ["dev"]
+    env_file: [.env.dev]
     environment:
+      ENV_FILE: .env.dev
       PYTHONPATH: /app
-    working_dir: /app
+    volumes:
+      - .:/app
     ports:
       - "8001:8000"
     depends_on:
+      mysql-dev:
+        condition: service_healthy
+    command: >
+      sh -lc "python -m alembic upgrade head &&
+              uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    container_name: auth-service-dev
+
+  auth-service-prod:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: prod
+    profiles: ["prod"]
+    env_file: [.env.prod]
+    environment:
+      ENV_FILE: .env.prod
+      PYTHONPATH: /app
+    ports:
+      - "8002:8000"
+    depends_on:
       mysql:
         condition: service_healthy
-    entrypoint:
-      - sh
-      - -lc
-    command:
-      - |
-        python - <<'PY'
-        import socket, time
-        host, port = 'mysql', 3306
-        for i in range(60):
-            try:
-                s = socket.create_connection((host, port), 2)
-                s.close()
-                print('mysql ready')
-                break
-            except Exception:
-                time.sleep(1)
-        else:
-            raise SystemExit('mysql not ready')
-        PY
-        python -m alembic upgrade head
-        python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+      migrate:
+        condition: service_completed_successfully
+    command: ["gunicorn","-k","uvicorn.workers.UvicornWorker","app.main:app","--bind","0.0.0.0:8000","--workers","2","--timeout","60"]
+    container_name: auth-service-prod
+    restart: unless-stopped
 
 volumes:
   mysql_data:
