@@ -106,7 +106,7 @@ def refresh(
     db: Session = Depends(get_db),
 ):
     
-    rt_raw = refresh_token_cookie or (payload.refresh_token if payload else None)
+    rt_raw = (payload.refresh_token if payload and payload.refresh_token else None) or refresh_token_cookie
     if not rt_raw:
         raise HTTPException(status_code=401, detail="Missing refresh token")
     
@@ -197,10 +197,10 @@ def change_password(payload: ChangePasswordRequest, current_user=Depends(get_cur
 
     current_user.password_hash = hash_password(payload.new_password)
     db.add(current_user)
-    db.commit()
 
     # security: revoke all sessions after password change
     revoke_all_for_user(db, current_user.id)
+    db.commit()
     return {"status": "ok"}
 
 
