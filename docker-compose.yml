@@ -10,7 +10,7 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
     volumes:
-      - mysql_data:/var/lib/mysql
+      - mysql_data_prod:/var/lib/mysql
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
       interval: 10s
@@ -30,7 +30,7 @@ services:
     ports:
       - "3310:3306"
     volumes:
-      - mysql_data:/var/lib/mysql
+      - mysql_data_dev:/var/lib/mysql
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
       interval: 10s
@@ -99,4 +99,5 @@ services:
     restart: unless-stopped
 
 volumes:
-  mysql_data:
+  mysql_data_dev:
+  mysql_data_prod:

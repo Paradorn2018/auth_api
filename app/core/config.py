@@ -1,49 +1,60 @@
+# app/core/config.py
 import os
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field, field_validator
-from typing import List
+from typing import List, Optional
 
-ENV_FILE = os.getenv("ENV_FILE", ".env")  # default เผื่อรัน local
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+ENV_FILE = os.getenv("ENV_FILE", ".env")
+
 
 class Settings(BaseSettings):
     APP_NAME: str = "auth-service"
-    DATABASE_URL: str = Field(...)
 
-    ENV: str = "dev"  # dev|prod
+    # dev|prod
+    ENV: str = "dev"
+    LOCAL_PROD: bool = False  # prod แต่รัน local http
 
-    JWT_SECRET: str = Field(..., min_length=32)
+    # ---- Security headers flags ----
+    SECURE_HEADERS: bool = True
+    ENABLE_HSTS: bool = False  # เปิดเฉพาะ prod https จริง
 
-    JWT_ALGORITHM: str = Field(default="HS256", validation_alias="JWT_ALGORITHM")
-    JWT_ALG: str = Field(default="HS256", validation_alias="JWT_ALG")
+    # ---- Docs ----
+    DOCS_ENABLED: bool = False
+    DOCS_KEY: Optional[str] = None
 
-    def __init__(self, **values):
-        super().__init__(**values)
-        if getattr(self, "JWT_ALGORITHM", None) and not getattr(self, "JWT_ALG", None):
-            object.__setattr__(self, "JWT_ALG", self.JWT_ALGORITHM)
-        if getattr(self, "JWT_ALG", None) and not getattr(self, "JWT_ALGORITHM", None):
-            object.__setattr__(self, "JWT_ALGORITHM", self.JWT_ALG)
+    # ---- CORS / hosts ----
+    ALLOWED_ORIGINS: str = ""  # comma-separated
+    CORS_ALLOW_CREDENTIALS: bool = True
+    CORS_STRICT_IN_PROD: bool = True
+    ALLOWED_HOSTS: str = "localhost,127.0.0.1"
+
+    # ---- cookies ----
+    COOKIE_SECURE: bool = False
+    COOKIE_SAMESITE: str = "lax"  # lax|strict|none
+    COOKIE_DOMAIN: str = ""
+
+    # ---- Database ----
+    DATABASE_URL: str
+
+    # ---- JWT ----
+    JWT_SECRET: str
+    JWT_ALGORITHM: str = "HS256"  # ให้ใช้ชื่อนี้เป็นหลัก
 
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 14
     PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 15
 
-    # เพิ่ม flags ที่จะคุม behavior dev/prod
+    # ---- Rate limit ----
     RATE_LIMIT_ENABLED: bool = True
-    DOCS_ENABLED: bool = False          # prod ปิด
-    SECURE_HEADERS: bool = True        # prod เปิด
-    ALLOWED_ORIGINS: str = ""
-    ALLOWED_HOSTS: str = "localhost,127.0.0.1"
 
-    COOKIE_SECURE: bool = False      # prod จะ override เป็น true
-    COOKIE_SAMESITE: str = "lax"     # "lax" ดีสำหรับ auth ทั่วไป
-    COOKIE_DOMAIN: str = ""          # optional
-
-    SMTP_HOST: str | None = None
-    SMTP_PORT: int = 587
-    SMTP_USERNAME: str | None = None
-    SMTP_PASSWORD: str | None = None
-    SMTP_FROM: str | None = None
-    FRONTEND_RESET_URL: str | None = None
+    # ---- SMTP (prod only) ----
+    SMTP_HOST: Optional[str] = None
+    SMTP_PORT: Optional[int] = None
+    SMTP_USERNAME: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
+    SMTP_FROM: Optional[str] = None
+    FRONTEND_RESET_URL: Optional[str] = None
 
     model_config = SettingsConfigDict(
         env_file=ENV_FILE,
@@ -59,12 +70,34 @@ class Settings(BaseSettings):
             raise ValueError("ENV must be 'dev' or 'prod'")
         return v
 
+    # รองรับ env เก่า JWT_ALG -> map ไป JWT_ALGORITHM
+    @field_validator("JWT_ALGORITHM", mode="before")
+    @classmethod
+    def compat_jwt_alg(cls, v):
+        return v or os.getenv("JWT_ALG") or "HS256"
+
     @property
-    def ALLOWED_ORIGINS_LIST(self):
-        return [x.strip() for x in self.ALLOWED_ORIGINS.split(",") if x.strip()]
+    def allowed_origins_list(self) -> List[str]:
+        return [x.strip() for x in (self.ALLOWED_ORIGINS or "").split(",") if x.strip()]
 
     @property
     def allowed_hosts_list(self) -> List[str]:
-        return [h.strip() for h in self.ALLOWED_HOSTS.split(",") if h.strip()]
+        return [h.strip() for h in (self.ALLOWED_HOSTS or "").split(",") if h.strip()]
+
 
 settings = Settings()
+
+# ---- prod hardening (prod จริง) ----
+if settings.ENV == "prod" and not settings.LOCAL_PROD:
+    settings = settings.model_copy(update={
+        "COOKIE_SECURE": True,
+        "SECURE_HEADERS": True,
+        "CORS_STRICT_IN_PROD": True,
+        "RATE_LIMIT_ENABLED": True,
+        # ENABLE_HSTS ให้เปิดเองเฉพาะ https จริง
+        # "ENABLE_HSTS": True,
+    })
+
+    # ถ้าเปิด docs ใน prod ต้องมี key
+    if settings.DOCS_ENABLED and not settings.DOCS_KEY:
+        raise RuntimeError("DOCS_ENABLED=true in prod but DOCS_KEY is missing")

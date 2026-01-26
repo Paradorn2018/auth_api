@@ -19,7 +19,7 @@ Invoke-RestMethod -Method Get -Uri "$BASE/api/v1/auth/view-profile" -Headers @{A
 Invoke-RestMethod -Method Patch -Uri "$BASE/api/v1/auth/edit-profile" -ContentType "application/json" -Headers @{Authorization="Bearer $($login.access_token)"} -Body '{"full_name":"Paradorn","phone":"0999999999"}'
 
 6) Change Password (POST)
-Invoke-RestMethod -Method Post -Uri "$BASE/api/v1/auth/change-password" -ContentType "application/json" -Headers @{Authorization="Bearer $($login.access_token)"} -Body '{"old_password":"Passw0rd!","new_password":"NewPassw0rd!"}'
+Invoke-RestMethod -Method Post -Uri "$BASE/api/v1/auth/change-password" -ContentType "application/json" -Headers @{Authorization="Bearer $($login.access_token)"} -Body '{"old_password":"test1234","new_password":"1234test"}'
 
 7) Refresh Access Token (POST)
 $newTokens = Invoke-RestMethod -Method Post -Uri "$BASE/api/v1/auth/refresh-access-token" -ContentType "application/json" -Body '{}' -WebSession $session

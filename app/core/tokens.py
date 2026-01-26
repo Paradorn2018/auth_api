@@ -32,8 +32,9 @@ def create_refresh_token(subject: str):
 
 def decode_token(token: str) -> dict:
     try:
-        return jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALG])
+        return jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
     except JWTError as e:
         raise ValueError("Invalid token") from e
+
 
 
